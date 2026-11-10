@@ -6,8 +6,8 @@ dofile("modkit-tools/tests/lua/harness.lua");
 -- engine/game stubs
 function doscanpath() end -- (would load the built-in commands; the tests add their own)
 CONSOLE_OUTPUT = { log = {}, error = {} };
-function consoleLog(line) CONSOLE_OUTPUT.log[getn(CONSOLE_OUTPUT.log) + 1] = line; end
-function consoleError(line) CONSOLE_OUTPUT.error[getn(CONSOLE_OUTPUT.error) + 1] = line; end
+function consoleLog(line) listPush(CONSOLE_OUTPUT.log, line); end
+function consoleError(line) listPush(CONSOLE_OUTPUT.error, line); end
 GLOBAL_PLAYERS = {
 	get = function (_, id) return { id = id }; end
 };
@@ -107,6 +107,21 @@ describe("PARAMS", function ()
 		end);
 	end);
 
+	describe("number", function ()
+		it("reads whole and decimal numbers, with a sign", function ()
+			expectEq(parse("x speed=8", { v = PARAMS.number({ "speed" }) }), { v = 8 });
+			expectEq(parse("x speed=0.5", { v = PARAMS.number({ "speed" }) }), { v = 0.5 });
+			expectEq(parse("x speed=.25", { v = PARAMS.number({ "speed" }) }), { v = 0.25 });
+			expectEq(parse("x speed=-1.5", { v = PARAMS.number({ "speed" }) }), { v = -1.5 });
+		end);
+		it("uses its default (as a number) when missing", function ()
+			expectEq(parse("x", { v = PARAMS.number({ "speed" }, 8) }), { v = 8 });
+		end);
+		it("ignores a value that isn't a number", function ()
+			expectEq(parse("x speed=fast", { v = PARAMS.number({ "speed" }) }), {});
+		end);
+	end);
+
 	describe("intToPlayer", function ()
 		it("reads `p=` or `player=` as a player, via GLOBAL_PLAYERS:get", function ()
 			expectEq(parse("x p=2", { player = PARAMS.intToPlayer() }), { player = { id = 2 } });
@@ -143,7 +158,7 @@ describe("PARAMS", function ()
 		it("rejects malformed vectors", function ()
 			local params = { pos = PARAMS.strToVec3({ "pos" }) };
 			local malformed = { "pos=1 2", "pos=+ 5 3", "pos=5+ 1 2", "pos=. 1 2", "pos=5. 1 2", "pos=1..2 3 4", "pos= 1 2 3" };
-			for i = 1, getn(malformed) do
+			for i = 1, listLength(malformed) do
 				expectNil(parse("move " .. malformed[i], params).pos, malformed[i]);
 			end
 		end);
@@ -193,6 +208,27 @@ describe("parseCommand", function ()
 		expectTruthy(PROBE_CALL, "the command ran");
 		expectEq(PROBE_CALL.words, { "probe", "hello" });
 	end);
+	it("takes `--name=value` for one of the command's params, as `name=value`", function ()
+		PROBE_CALL = nil;
+		print = function () end;
+		parseCommand("probe --n=4 --loud");
+		print = HARNESS_PRINT;
+		expectEq(PROBE_CALL.params, { count = 4 });
+		expectEq(PROBE_CALL.flags, { loud = 1 });
+		expectEq(PROBE_CALL.line, "probe n=4 --loud");
+		expectEq(PROBE_CALL.words, { "probe", "n=4", "--loud" });
+	end);
+	it("refuses an unknown flag, or an unknown `--name=value`, without running the command", function ()
+		PROBE_CALL = nil;
+		CONSOLE_OUTPUT.error = {};
+		parseCommand("probe --lowd");
+		parseCommand("probe --speed=2");
+		expectEq(PROBE_CALL, nil, "the command shouldn't run");
+		expectEq(CONSOLE_OUTPUT.error, {
+			"unknown flag '--lowd' for 'probe' (see 'help probe')",
+			"unknown parameter '--speed=2' for 'probe' (see 'help probe')",
+		});
+	end);
 	it("logs unknown commands", function ()
 		CONSOLE_OUTPUT.log = {};
 		parseCommand("nonsense here");
@@ -204,7 +240,7 @@ describe("parseCommand", function ()
 		_ERRORMESSAGE = function () end; -- (keeps the expected traceback out of the test output)
 		parseCommand("broken");
 		_ERRORMESSAGE = quiet;
-		expectEq(getn(CONSOLE_OUTPUT.error), 1, "one error line");
+		expectEq(listLength(CONSOLE_OUTPUT.error), 1, "one error line");
 		expectTruthy(strfind(CONSOLE_OUTPUT.error[1], "command 'broken' failed: ", 1, 1), "names the command");
 		expectTruthy(strfind(CONSOLE_OUTPUT.error[1], "attempt to index", 1, 1), "includes the error message");
 	end);
