@@ -9,7 +9,7 @@ loadQuietly("scripts/modkit/protected_call.lua");
 -- stands in for the game's handler: records the messages it gets
 GAME_HANDLED = {};
 function gameHandler(message)
-	GAME_HANDLED[getn(GAME_HANDLED) + 1] = message;
+	listPush(GAME_HANDLED, message);
 end
 
 --- Runs `fn` with `gameHandler` as the game's `_ERRORMESSAGE`, then puts the harness's back (so expectations made afterwards are caught).
@@ -53,7 +53,7 @@ describe("protectedCall", function ()
 		local order = {};
 		asGame(function ()
 			local order_here = %order;
-			protectedCall(function () error("logged"); end, {}, function () %order_here[getn(%order_here) + 1] = "onError"; end);
+			protectedCall(function () error("logged"); end, {}, function () listPush(%order_here, "onError"); end);
 		end);
 		expectEq(GAME_HANDLED, { "logged" });
 		expectEq(order, { "onError" });
@@ -78,9 +78,9 @@ describe("protectedCall", function ()
 		local succeeded, restored = asGame(function ()
 			local outer_here = %outer_seen;
 			return protectedCall(function (inner)
-				protectedCall(function () error("inner"); end, {}, function (message) %inner[getn(%inner) + 1] = message; end);
+				protectedCall(function () error("inner"); end, {}, function (message) listPush(%inner, message); end);
 				error("outer");
-			end, { %inner_seen }, function (message) %outer_here[getn(%outer_here) + 1] = message; end);
+			end, { %inner_seen }, function (message) listPush(%outer_here, message); end);
 		end);
 		expectNil(succeeded);
 		expectEq(inner_seen, { "inner" });
@@ -106,7 +106,7 @@ describe("protectedCall", function ()
 		local caught = {};
 		local succeeded, restored = asGame(function ()
 			settagmethod(tag(print), "setglobal", function (name)
-				REFUSED[getn(REFUSED) + 1] = name;
+				listPush(REFUSED, name);
 			end);
 
 			local caught_here = %caught;

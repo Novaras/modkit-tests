@@ -4,6 +4,31 @@
 -- Run from the repo root (`npm test` in `modkit-tools` does this), so modkit files load with repo-relative paths.
 -- Offline there's no "Cannot overwrite function" guard, so `call`'s error handler argument works here.
 
+-- ===[ List helpers ]===
+-- (Not `getn`/`tinsert`: modkit avoids Lua's table functions. Not `modkit.table` either, since that's under test, and not every test loads it.)
+
+--- The number of entries in the list `list`.
+---
+---@param list table
+---@return integer
+function listLength(list)
+	local n = 0;
+	for _, _ in list do
+		n = n + 1;
+	end
+	return n;
+end
+
+--- Appends `value` to the list `list`, returning `list`.
+---
+---@param list table
+---@param value any
+---@return table
+function listPush(list, value)
+	list[listLength(list) + 1] = value;
+	return list;
+end
+
 -- ===[ Stubs ]===
 
 --- Loads a game path (`data:...`) relative to the repo root, like the game does relative to the mod.
@@ -45,7 +70,7 @@ function show(value, seen)
 
 	local keys = {};
 	for k, _ in value do
-		keys[getn(keys) + 1] = k;
+		listPush(keys, k);
 	end
 	sort(keys, function (a, b)
 		if (type(a) == type(b) and (type(a) == "number" or type(a) == "string")) then
@@ -55,7 +80,7 @@ function show(value, seen)
 	end);
 
 	local out = "{";
-	for i = 1, getn(keys) do
+	for i = 1, listLength(keys) do
 		local k = keys[i];
 		if (i > 1) then
 			out = out .. ", ";
@@ -108,7 +133,7 @@ end
 function expectSameItems(actual, expected, label)
 	local remaining = {};
 	for _, v in expected do
-		remaining[getn(remaining) + 1] = v;
+		listPush(remaining, v);
 	end
 	local count = 0;
 	for _, v in actual do
@@ -128,6 +153,13 @@ function expectSameItems(actual, expected, label)
 	end
 	if (next(remaining, nil)) then
 		fail((label and (label .. ": ") or "") .. "missing items " .. show(remaining) .. " from " .. show(actual));
+	end
+end
+
+--- Fails unless `value` is non-nil.
+function expect(value, label)
+	if (value == nil) then
+		fail(label or "expectation failed");
 	end
 end
 
@@ -182,14 +214,14 @@ function it(name, fn)
 		HARNESS.passed = HARNESS.passed + 1;
 		HARNESS_PRINT("  pass  " .. full_name);
 	else
-		HARNESS.failures[getn(HARNESS.failures) + 1] = full_name .. "\n        " .. tostring(caught.message);
+		listPush(HARNESS.failures, full_name .. "\n        " .. tostring(caught.message));
 		HARNESS_PRINT("  FAIL  " .. full_name);
 	end
 end
 
 --- Prints the summary, and exits with code 1 if anything failed (so the runner can tell).
 function finish()
-	local failed = getn(HARNESS.failures);
+	local failed = listLength(HARNESS.failures);
 	if (failed > 0) then
 		HARNESS_PRINT("\nFailures:");
 		for i = 1, failed do

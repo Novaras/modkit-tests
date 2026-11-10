@@ -4,96 +4,7 @@
 -- afterwards. Most tests need game time (ships only register on their first `update`, and orders take time to play out), so close the
 -- console once they begin. The "combat" suite needs an enemy player (i.e a skirmish against a CPU), and is skipped without one.
 
--- helpers (on a global table: Lua 4 upvalues only reach one function out, so file-level locals can't be used inside `it` callbacks)
-SHIP_TEST = {
-	origin = { 0, 3000, 0 },
-	player = 0,
-};
-
---- Spawns a `ship_type` for `options.player` (default `SHIP_TEST.player`) at `options.offset` from `SHIP_TEST.origin`, and sets it as
---- `ctx[key]` once modkit registers it. Spawned ships are kept in `ctx.spawned`, for `SHIP_TEST.cleanup`.
----
----@param ctx table
----@param key string
----@param ship_type string
----@param options? { player?: integer, offset?: Vec3Like }
----@return EventChain
-function SHIP_TEST.spawn(ctx, key, ship_type, options)
-	options = options or {};
-	ctx.spawned = ctx.spawned or {};
-	ctx.home = ctx.home or {};
-	local where = Vec3(SHIP_TEST.origin) + Vec3(options.offset or { 0, 0, 0 });
-	ctx.home[key] = where;
-
-	return modkit.ships():spawnShips({
-		ship_type = ship_type,
-		player_index = options.player or SHIP_TEST.player,
-		where = where,
-	}):next(function (res, rej, state)
-		local _, ship = next(state._previous_result or {}, nil);
-		if (ship == nil) then
-			return rej("no " .. %ship_type .. " was spawned");
-		end
-		ship:ROE(PassiveROE); -- (so it doesn't wander off to fight)
-		%ctx[%key] = ship;
-		%ctx.spawned[getn(%ctx.spawned) + 1] = ship;
-		res(ship);
-	end);
-end
-
---- Spawns each of `ship_types` (`{ [key] = ship_type }`) with `SHIP_TEST.spawn`, spaced out along x; resolves once they're all registered.
----
----@param ctx table
----@param ship_types table<string, string>
----@param options? { player?: integer, offset?: Vec3Like }
----@return Event
-function SHIP_TEST.spawnAll(ctx, ship_types, options)
-	options = options or {};
-	local offset = Vec3(options.offset or { 0, 0, 0 });
-	local i = 0;
-	for key, ship_type in ship_types do
-		SHIP_TEST.spawn(ctx, key, ship_type, { player = options.player, offset = offset + { i * 800, 0, 0 } })
-			:catch(function (message) %ctx.spawn_error = message; end);
-		i = i + 1;
-	end
-
-	return waitFor(function ()
-		if (%ctx.spawn_error) then
-			fail("spawning failed: " .. %ctx.spawn_error);
-		end
-		for key, _ in %ship_types do
-			if (%ctx[key] == nil) then
-				return nil;
-			end
-		end
-		return 1;
-	end, { timeout = 20, message = "the spawned ships never registered" });
-end
-
---- Puts the ship `ctx[key]` back where it spawned, stopped and at full HP.
----
----@param ctx table
----@param key string
-function SHIP_TEST.reset(ctx, key)
-	local ship = ctx[key];
-	if (ship and not ship._destroyed) then
-		ship:stop();
-		ship:HP(1);
-		ship:position(ctx.home[key]);
-	end
-end
-
---- Quietly removes every ship in `ctx.spawned`.
----
----@param ctx table
-function SHIP_TEST.cleanup(ctx)
-	for _, ship in ctx.spawned or {} do
-		if (not ship._destroyed and ship:count() > 0) then
-			ship:die(1);
-		end
-	end
-	ctx.spawned = {};
-end
+dofilepath("data:scripts/modkit/tests/lib/ships.lua"); -- (`SHIP_TEST`: spawning and cleanup helpers)
 
 describe("Ship", function ()
 	before(function (ctx)
@@ -114,6 +25,13 @@ describe("Ship", function ()
 			expect(GLOBAL_SHIPS:get(ctx.scout.id) == ctx.scout, "GLOBAL_SHIPS:get(id) isn't the spawned Ship");
 		end);
 
+		it("spawnShips puts each ship where it was asked (several spawned at once)", function (ctx)
+			-- (`before` spawns four ships 800 apart in the same moment, so they'd overlap if their spawn volumes were mixed up)
+			for _, key in { "scout", "interceptor", "frigate", "carrier" } do
+				expect(ctx[key]:distanceTo(ctx.home[key]) < 300, key .. " is " .. floor(ctx[key]:distanceTo(ctx.home[key])) .. " from where it was spawned");
+			end
+		end);
+
 		it("knows its type, player and group", function (ctx)
 			local scout = ctx.scout;
 			expectEq(scout.ship_type, "kus_scout");
@@ -125,6 +43,9 @@ describe("Ship", function ()
 		end);
 
 		it("ticks on each update", function (ctx)
+			if (Rule_AddInterval) then
+				skip("ships only tick in the ship scope; tests run in the rules scope");
+			end
 			local start = ctx.scout:tick();
 			return waitFor(function () return %ctx.scout:tick() > %start; end, { message = "tick didn't increase" });
 		end);
@@ -245,6 +166,13 @@ describe("Ship", function ()
 			expectNil(ctx.scout:isNear(pos + { 5000, 0, 0 }, 1000));
 		end);
 
+		it("isNear takes a ship as the target, and follows it as it moves", function (ctx)
+			ctx.interceptor:position(ctx.scout:position() + { 500, 0, 0 });
+			expectTruthy(ctx.scout:isNear(ctx.interceptor, 1000), "500 away");
+			ctx.interceptor:position(ctx.scout:position() + { 5000, 0, 0 });
+			expectNil(ctx.scout:isNear(ctx.interceptor, 1000), "5000 away");
+		end);
+
 		it("positionEq compares positions, with an optional leeway", function (ctx)
 			local pos = ctx.scout:position();
 			expectTruthy(ctx.scout:positionEq(pos));
@@ -295,8 +223,8 @@ describe("Ship", function ()
 		it("a new move rejects the previous move's event", function (ctx)
 			local first = ctx.scout:move(ctx.scout:position() + { 3000, 0, 0 });
 			ctx.scout:move(ctx.scout:position() + { 0, 0, 3000 });
-			expectEq(first.event.status, EVENT_STATUS.REJECTED);
-			expectTruthy(strfind(first.event.error, "superseded", 1, 1), "error: " .. tostring(first.event.error));
+			expectEq(first.status, EVENT_STATUS.REJECTED);
+			expectTruthy(strfind(first.error, "superseded", 1, 1), "error: " .. tostring(first.error));
 		end);
 
 		it("moving is 1 while it moves, and nil after stop", function (ctx)
@@ -500,10 +428,7 @@ describe("Ship", function ()
 
 	describe("combat", function ()
 		before(function (ctx)
-			local me = GLOBAL_PLAYERS:get(SHIP_TEST.player);
-			local enemy = modkit.table.findVal(GLOBAL_PLAYERS:alive(), function (player)
-				return not player:alliedWith(%me);
-			end);
+			local enemy = SHIP_TEST.enemy();
 			if (enemy == nil) then
 				skip("no enemy player");
 			end
@@ -527,12 +452,20 @@ describe("Ship", function ()
 		it("attack makes it attack the target, which is then under attack", function (ctx)
 			ctx.target:invulnerable(1); -- (so it lives long enough to check)
 			ctx.target:ROE(PassiveROE);
+			-- (pinned in place: in a skirmish, the CPU's AI takes over ships spawned for it, and ordered this one back to its mothership,
+			-- out of the interceptor's reach)
+			ctx.target:speed(0);
+			ctx.target:position(ctx.home.target);
 			ctx.interceptor:ROE(OffensiveROE);
 			ctx.interceptor:attack(ctx.target);
 			return sequence(
-				waitFor(function () return %ctx.interceptor:attacking(%ctx.target); end, { message = "never attacking the target" }),
+				waitFor(function () return %ctx.interceptor:attacking(%ctx.target); end, { message = function ()
+					return "never attacking the target (" .. SHIP_TEST.describe(%ctx, "interceptor") .. "; " .. SHIP_TEST.describe(%ctx, "target") .. ")";
+				end }),
 				function () expectTruthy(%ctx.interceptor:attacking(), "attacking anything"); end,
-				waitFor(function () return %ctx.target:underAttack(); end, { timeout = 20, message = "the target was never under attack" }),
+				waitFor(function () return %ctx.target:underAttack(); end, { timeout = 20, message = function ()
+					return "the target was never under attack (" .. SHIP_TEST.describe(%ctx, "interceptor") .. "; " .. SHIP_TEST.describe(%ctx, "target") .. ")";
+				end }),
 				function () expectTruthy(%ctx.target:underAttack(%ctx.interceptor), "under attack by the interceptor"); end
 			);
 		end, { timeout = 40 });

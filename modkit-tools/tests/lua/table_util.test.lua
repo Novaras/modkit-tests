@@ -385,14 +385,14 @@ end);
 describe("printTbl", function ()
 	it("prints through output_fn, under the label", function ()
 		local lines = {};
-		T.printTbl({ x = 1, s = "v" }, "label", nil, function (line) %lines[getn(%lines) + 1] = line; end);
+		T.printTbl({ x = 1, s = "v" }, "label", nil, function (line) listPush(%lines, line); end);
 		expectSameItems(lines, { "\"label\": {", "\t\"x\": 1,", "\t\"s\": \"v\",", "}," });
 	end);
 	it("prints a cycle as <cycle: ...> instead of overflowing the stack", function ()
 		local looped = { name = "a" };
 		looped.self = looped;
 		local lines = {};
-		T.printTbl(looped, "looped", nil, function (line) %lines[getn(%lines) + 1] = line; end);
+		T.printTbl(looped, "looped", nil, function (line) listPush(%lines, line); end);
 		local found = nil;
 		for _, line in lines do
 			if (strfind(line, "<cycle:", 1, 1)) then

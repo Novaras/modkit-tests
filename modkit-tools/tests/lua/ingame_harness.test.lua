@@ -16,19 +16,12 @@ loadQuietly("scripts/modkit/tests/lib/harness.lua"); -- (also loads events, tabl
 T = MK_TEST;
 E = modkit.events;
 
---- Fails unless `value` is non-nil (the offline harness has no plain `expect`).
-function expect(value, label)
-	if (value == nil) then
-		fail(label or "expectation failed");
-	end
-end
-
 function record(value)
-	RECORD[getn(RECORD) + 1] = value;
+	listPush(RECORD, value);
 end
 
 --- Collects the suites `fn` describes and begins running them, with a fresh clock, events and `RECORD`. Output lines go to `LINES`.
-function startRun(fn)
+function startRun(fn, on_suite, on_test)
 	E:reset();
 	NOW = 0;
 	RECORD = {};
@@ -37,7 +30,9 @@ function startRun(fn)
 	fn();
 	return T.run({
 		name = "offline",
-		output = function (line) LINES[getn(LINES) + 1] = line; end,
+		output = function (line) listPush(LINES, line); end,
+		onSuite = on_suite,
+		onTest = on_test,
 	});
 end
 
@@ -72,6 +67,49 @@ function counts(run)
 	return { passed = run.passed, failed = run.failed, skipped = run.skipped };
 end
 
+describe("onTest", function ()
+	it("announces each test as it begins, but not skipped ones", function ()
+		EVENTS = {};
+		local run = drive(startRun(function ()
+			T.describe("suite", function ()
+				T.it("first", function () end);
+				T.xit("pending", function () end);
+				T.it("second", function () T.fail("nope"); end);
+			end);
+		end, nil, function (run, test)
+			listPush(EVENTS, test.name);
+		end), 30);
+		expect(run.done, "the run should finish");
+		expectEq(EVENTS, { "first", "second" });
+	end);
+end);
+
+describe("onSuite", function ()
+	it("announces each top-level suite's beginning and end, with its own results (not nested suites)", function ()
+		EVENTS = {};
+		local run = drive(startRun(function ()
+			T.describe("first", function ()
+				T.it("passes", function () end);
+				T.describe("nested", function ()
+					T.it("fails", function () T.fail("nope"); end);
+				end);
+			end);
+			T.describe("second", function ()
+				T.it("passes", function () end);
+				T.xit("is pending", function () end);
+			end);
+		end, function (run, suite, event, counts)
+			local line = suite.name .. " " .. event;
+			if (counts) then
+				line = line .. " " .. counts.passed .. "/" .. counts.failed .. "/" .. counts.skipped;
+			end
+			listPush(EVENTS, line);
+		end), 30);
+		expect(run.done, "the run should finish");
+		expectEq(EVENTS, { "first begin", "first end 1/1/0", "second begin", "second end 1/0/1" });
+	end);
+end);
+
 describe("results", function ()
 	it("counts passing, failing and erroring tests, with the failures' messages", function ()
 		local run = runSuites(function ()
@@ -91,9 +129,10 @@ describe("results", function ()
 				T.it("fails", function () T.fail("nope"); end);
 			end);
 		end);
-		local n = getn(LINES);
+		local n = listLength(LINES);
 		expectTruthy(strfind(LINES[n - 1], "offline: 0 passed, 1 failed, 0 skipped", 1, 1), "summary line");
-		expectTruthy(strfind(LINES[n], "suite > fails: nope", 1, 1), "failure recap line");
+		local recap = gsub(LINES[n], "<[^>]*>", ""); -- (without the colour tags)
+		expectTruthy(strfind(recap, "1) suite > fails: nope", 1, 1), "failure recap line: " .. recap);
 	end);
 	it("cuts long lines in the output", function ()
 		runSuites(function ()
@@ -101,9 +140,16 @@ describe("results", function ()
 				T.it("fails", function () T.fail(strrep("x", 500)); end);
 			end);
 		end);
-		for i = 1, getn(LINES) do
-			expect(strlen(LINES[i]) <= T.console_line_length, "line " .. i .. " is too long");
+		for i = 1, listLength(LINES) do
+			local visible = gsub(LINES[i], "<[^>]*>", "");
+			expect(strlen(visible) <= T.console_line_length, "line " .. i .. " is too long");
 		end
+	end);
+	it("clip counts only visible characters, never cuts a tag, and keeps the closing tags", function ()
+		expectEq(T.clip("<b>abc</b>", 3), "<b>abc</b>");
+		expectEq(T.clip("<b>abcdef</b><c=fff>ghi</c>", 6), "<b>abc...</b><c=fff></c>");
+		expectEq(T.clip("ab<c=fff>cdefgh</c>", 6), "ab<c=fff>c...</c>");
+		expectEq(T.clip("abcdefgh", 5), "ab...");
 	end);
 	it("calls onFinish with the run", function ()
 		RECORD = {};
@@ -112,7 +158,7 @@ describe("results", function ()
 		T.describe("suite", function () T.it("passes", function () end); end);
 		local run = T.run({ output = function () end, onFinish = function (finished) record(finished); end });
 		drive(run, 5);
-		expectEq(getn(RECORD), 1);
+		expectEq(listLength(RECORD), 1);
 		expect(RECORD[1] == run, "onFinish should get the run");
 	end);
 end);
@@ -225,7 +271,7 @@ describe("async tests", function ()
 		expectEq(run.passed, 2);
 		expect(RECORD[1] >= 2, "the next test ran before the wait finished");
 	end);
-	it("can return a chain, rather than an event", function ()
+	it("can return a running chain", function ()
 		local run = runSuites(function ()
 			T.describe("suite", function ()
 				T.it("chains", function ()
@@ -235,6 +281,17 @@ describe("async tests", function ()
 		end);
 		expectEq(run.passed, 1);
 		expectEq(RECORD, { "next" });
+	end);
+	it("can return a chain that hasn't begun (the harness begins it)", function ()
+		local run = runSuites(function ()
+			T.describe("suite", function ()
+				T.it("chains", function ()
+					return T.wait(0.5):next(function (res) record(NOW); res(); end);
+				end);
+			end);
+		end);
+		expectEq(run.passed, 1);
+		expect(RECORD[1] and RECORD[1] >= 0.5, "the chain's second event ran before its first finished");
 	end);
 	it("fail with the message when the event rejects", function ()
 		local run = runSuites(function ()
@@ -419,6 +476,44 @@ describe("sequence", function ()
 	end);
 end);
 
+describe("parallel", function ()
+	it("runs its branches at once, and resolves with their values once they've all finished", function ()
+		local run = runSuites(function ()
+			T.describe("suite", function ()
+				T.it("parallels", function ()
+					return T.sequence(
+						T.parallel(
+							T.sequence(T.wait(1), function () record("a " .. NOW); return "a"; end),
+							function () return T.sequence(T.wait(1), function () record("b " .. NOW); return "b"; end); end,
+							function () return 3; end
+						),
+						function (values) record(values[1] .. values[2] .. values[3]); record(NOW); end
+					);
+				end);
+			end);
+		end);
+		expectEq(run.passed, 1);
+		expectEq(RECORD[1], RECORD[2] and ("a " .. strsub(RECORD[2], 3)) or nil, "both branches should finish on the same tick");
+		expectEq(RECORD[3], "ab3");
+		expect(RECORD[4] >= 1 and RECORD[4] < 2, "it should take about as long as one branch, not both (" .. tostring(RECORD[4]) .. ")");
+	end);
+	it("waits for every branch, then rejects with each error, numbered", function ()
+		local run = runSuites(function ()
+			T.describe("suite", function ()
+				T.it("parallels", function ()
+					return T.parallel(
+						T.waitFor(function () return nil; end, { timeout = 0.5, message = "never" }),
+						T.sequence(T.wait(1), function () record(NOW); end),
+						function () T.expectEq("a", "b"); end
+					);
+				end);
+			end);
+		end);
+		expectEq(run.failures[1].message, "(1) waited 0.5s: never; (3) expected \"b\", got \"a\"");
+		expect(RECORD[1] and RECORD[1] >= 1, "the second branch should have finished first");
+	end);
+end);
+
 describe("waitFor", function ()
 	it("resolves with the predicate's value once it's non-nil", function ()
 		runSuites(function ()
@@ -442,6 +537,16 @@ describe("waitFor", function ()
 			end);
 		end);
 		expectEq(run.failures[1].message, "waited 2s: it never docked");
+	end);
+	it("calls a function message at the timeout, so it can describe the state then", function ()
+		local run = runSuites(function ()
+			T.describe("suite", function ()
+				T.it("waits", function ()
+					return T.waitFor(function () return nil; end, { timeout = 2, message = function () return "gave up at " .. floor(NOW); end });
+				end);
+			end);
+		end);
+		expectEq(run.failures[1].message, "waited 2s: gave up at 2");
 	end);
 end);
 
@@ -494,6 +599,36 @@ describe("assertions", function ()
 		_ERRORMESSAGE = saved;
 		expectNil(passed);
 	end);
+	it("expectConsoleError catches consoleError output, and returns the function's result", function ()
+		consoleError = function () RECORD.leaked = 1; end; -- (the real one, which mustn't be reached)
+		RECORD = {};
+		local result = T.expectConsoleError(function ()
+			consoleError("first", "can't do that");
+			return "result";
+		end, "do that");
+		expectEq(result, "result");
+		expectNil(RECORD.leaked);
+		consoleError("after");
+		expectEq(RECORD.leaked, 1, "consoleError should be put back");
+		consoleError = nil;
+	end);
+	it("expectConsoleError catches `consoleError or print` callers when there's no consoleError", function ()
+		consoleError = nil;
+		T.expectConsoleError(function ()
+			local output = consoleError or print; -- (as modkit's code does it)
+			output("oops");
+		end);
+		expectNil(consoleError, "should be put back to nil");
+	end);
+	it("expectConsoleError fails when nothing (or nothing matching) is logged, or the function errors", function ()
+		local saved = _ERRORMESSAGE;
+		_ERRORMESSAGE = function () end;
+		expectError(function () T.expectConsoleError(function () end); end);
+		expectError(function () T.expectConsoleError(function () consoleError("other"); end, "wanted"); end);
+		expectError(function () T.expectConsoleError(function () consoleError("x"); error("boom"); end); end);
+		_ERRORMESSAGE = saved;
+		expectNil(consoleError, "should be put back after a failure too");
+	end);
 	it("show names ships and events, and doesn't go deep into tables", function ()
 		expectEq(T.show({ own_group = "kus_scout-12", player = {} }), "Ship(kus_scout-12)");
 		expectEq(T.show({ __is_event = 1, name = "ev", status = "running" }), "Event(ev, running)");
@@ -515,7 +650,7 @@ describe("install", function ()
 		local missing = {};
 		for _, name in T.exports do
 			if (rawget(globals(), name) ~= T[name]) then
-				missing[getn(missing) + 1] = name;
+				listPush(missing, name);
 			end
 		end
 		for _, name in T.exports do -- (put the offline harness's back)

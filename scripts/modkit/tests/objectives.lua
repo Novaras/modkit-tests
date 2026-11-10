@@ -19,12 +19,12 @@ describe("objectives", function ()
 		-- no `id`, so the engine picks it
 		ctx.objective = modkit.objectives:set(ctx.def);
 		expectTruthy(ctx.objective, "modkit.objectives:set returned nil");
-		ctx.seeded[getn(ctx.seeded) + 1] = ctx.objective;
+		modkit.table.push(ctx.seeded, ctx.objective);
 	end);
 
 	-- hide them, so they don't stay in the objectives list
 	after(function (ctx)
-		for i = 1, getn(ctx.seeded or {}) do
+		for i = 1, modkit.table.length(ctx.seeded or {}) do
 			ctx.seeded[i]:off();
 		end
 		ctx.seeded = {};
@@ -56,7 +56,10 @@ describe("objectives", function ()
 
 	it("visible(1) can't show a hidden objective again (hiding is permanent)", function (ctx)
 		ctx.objective:visible(0);
-		expectNil(ctx.objective:visible(1));
+		local shown = expectConsoleError(function ()
+			return %ctx.objective:visible(1);
+		end, "can't be shown again");
+		expectNil(shown);
 	end);
 
 	it("completed reads and sets whether it's complete", function (ctx)
@@ -83,22 +86,28 @@ describe("objectives", function ()
 	end);
 
 	it("refuses a preset ID once sequential IDs are in use, rather than a FATAL EXIT", function ()
-		expectNil(modkit.objectives:set({ id = 9999, name = "preset" }));
+		local objective = expectConsoleError(function ()
+			return modkit.objectives:set({ id = 9999, name = "preset" });
+		end, "IDs are already in use");
+		expectNil(objective);
 	end);
 
 	it("reads nil through an objective whose def was deleted", function (ctx)
 		local id = ctx.objective:id();
 		local def = GLOBAL_OBJECTIVES._entities[id];
 		GLOBAL_OBJECTIVES:delete(id);
-		local name_fn = ctx.objective.name; -- (the tag method warns and gives nil, since the def is gone)
-		GLOBAL_OBJECTIVES._entities[id] = def; -- (put back, so `after` can hide it)
+		local name_fn = expectConsoleError(function ()
+			local value = %ctx.objective.name; -- (the tag method warns and gives nil, since the def is gone)
+			GLOBAL_OBJECTIVES._entities[%id] = %def; -- (put back straight away, so `after` can hide it even if this test fails)
+			return value;
+		end, "underlying data was deleted");
 		expectNil(name_fn);
 	end);
 end);
 
 describe("objectives (on screen)", function ()
 	after(function (ctx)
-		for i = 1, getn(ctx.objectives or {}) do
+		for i = 1, modkit.table.length(ctx.objectives or {}) do
 			ctx.objectives[i]:off();
 		end
 	end);
@@ -119,19 +128,19 @@ describe("objectives (on screen)", function ()
 			wait(wait_time),
 			function ()
 				local objectives = %ctx.objectives;
-				for i = 1, getn(objectives) do
+				for i = 1, modkit.table.length(objectives) do
 					if (mod(i, 2) == 1) then
 						objectives[i]:visible(0);
 					end
 				end
 
 				local shown = {}; -- (a list, in order; `modkit.table.filter` keeps the original keys)
-				for i = 1, getn(objectives) do
+				for i = 1, modkit.table.length(objectives) do
 					if (objectives[i]:visible()) then
-						shown[getn(shown) + 1] = objectives[i];
+						modkit.table.push(shown, objectives[i]);
 					end
 				end
-				expectEq(getn(shown), 6, "shown after hiding every other one");
+				expectEq(modkit.table.length(shown), 6, "shown after hiding every other one");
 				return shown;
 			end,
 			wait(wait_time),
@@ -147,10 +156,10 @@ describe("objectives (on screen)", function ()
 			wait(wait_time),
 			function ()
 				local objectives = %ctx.objectives;
-				for i = 1, getn(objectives) do
+				for i = 1, modkit.table.length(objectives) do
 					objectives[i]:off();
 				end
-				for i = 1, getn(objectives) do
+				for i = 1, modkit.table.length(objectives) do
 					expectNil(objectives[i]:visible(), "objective " .. i .. " still shown");
 				end
 			end
