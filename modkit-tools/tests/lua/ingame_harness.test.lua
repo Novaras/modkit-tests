@@ -1,4 +1,4 @@
--- Offline unit tests for `scripts/modkit/tests/lib/harness.lua` (`MK_TEST`, the ingame tests' harness). Run with `npm test` in `modkit-tools`.
+-- Offline unit tests for `scripts/modkit/test_harness.lua` (`MK_TEST`, the ingame tests' harness). Run with `npm test` in `modkit-tools`.
 --
 -- The game clock is faked (`NOW`), and runs are driven like the rules scope drives events: a tick every 0.1s.
 -- `MK_TEST`'s functions are called through `T` rather than installed, since this file's own `describe`/`it` are the offline harness's.
@@ -11,7 +11,7 @@ NOW = 0;
 function Universe_GameTime() return NOW; end
 function Rule_AddInterval() end
 
-loadQuietly("scripts/modkit/tests/lib/harness.lua"); -- (also loads events, table_util and protected_call)
+loadQuietly("scripts/modkit/test_harness.lua"); -- (also loads events, table_util and protected_call)
 
 T = MK_TEST;
 E = modkit.events;

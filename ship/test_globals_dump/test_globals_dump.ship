@@ -1,5 +1,5 @@
 -- modkit test ship: the test target (an unarmed assault frigate), whose custom code dumps the ship custom code scope's globals on its
--- first update, for `test scopes` (scripts/custom_code/test/globals-dump.lua). Not for gameplay.
+-- first update, for `test scopes` (scripts/custom_code/test_globals_dump.lua). Not for gameplay.
 NewShipType = StartShipConfig()
 NewShipType.displayedName="test_globals_dump"
 NewShipType.sobDescription="modkit test target"

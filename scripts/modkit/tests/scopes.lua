@@ -4,7 +4,7 @@
 --
 -- - Rules (gamerule) scope: dumped by the test itself (the tests run in this scope).
 -- - UI scope: queued as UI code when this file loads (while the console is open), so it runs as the console closes to start the tests.
--- - Ship custom code scope: a `test_globals_dump` ship dumps it on its first update (`scripts/custom_code/test/globals-dump.lua`).
+-- - Ship custom code scope: a `test_globals_dump` ship dumps it on its first update (`scripts/custom_code/test_globals_dump.lua`).
 -- The dump is `tests/lib/globals_dump.lua`: one `[globals] <scope>\t<name>\t<kind>` line per global.
 
 dofilepath("data:scripts/modkit/tests/lib/globals_dump.lua");

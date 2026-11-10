@@ -1,16 +1,10 @@
 -- `MK_GLOBALS_DUMP(scope)`: logs every global in the current Lua scope, one per line, for `test scopes` (`tests/scopes.lua`) and the
 -- load-time dumps. Loaded in each scope:
 -- - by `test scopes`: the rules scope (the test), the UI scope (queued UI code) and the ship custom code scope (the `test_globals_dump`
---   ship, `scripts/custom_code/test/globals-dump.lua`);
--- - at load, while `MK_SCOPE_DUMPS_AT_LOAD` is set (each file ends with the same 3-line hook, naming its scope):
---   - Level: `modkit_sandbox.level`; Object: `test_globals_dump.ship`; Madstate: `test_globals_dump.madstate`;
---   - AI: `ai/default.lua` and ATI: `ui/ati/ati.lua` (copies of the stock files with the hook added: delete or keep identical
---     to stock once done);
---   - Campaign: `modkit_sandbox.campaign` (plus CampaignPostload, from its mission's `postload`);
---   - GameSetup: `scripts/rules/deathmatch.lua` when the file is read outside the Rules scope (the front end);
---   - Races: `scripts/races/test.lua`; SpeechLogic: `soundscripts/speechlogic/zz_modkit_globals_dump.lua` (a loader wildcard);
---   - UIScreen: `ui/newui/mk_consolescreen.lua` (no `globals()` there: falls back to globals_probe.lua, known names only);
---   - Autoexec / AutoexecEnd: `.dev/autoexec/autoexec*.lua`, copied beside the exe (`Bin/Release`) by hand.
+--   ship, `scripts/custom_code/test_globals_dump.lua`);
+-- - at load, while `MK_SCOPE_DUMPS_AT_LOAD` is set: by a 3-line hook at the end of each scope's file (Level, Object, AI, ATI,
+--   Campaign, GameSetup, Races, SpeechLogic, Madstate, UIScreen, Autoexec). **Paused (2026-11-10):** the hooks aren't in place (they
+--   were temporary edits to modkit and stock-file copies); `test_globals_dump.ship` still has its Object hook.
 --
 -- Each line is `[globals] <scope>\t<name>\t<kind>`, between `[globals] <scope> begin` and `[globals] <scope> end <count>` lines.
 -- `<kind>` is the value's type, except for functions when the scope has `getinfo` (Lua's debug library): `cfunction` for a C
