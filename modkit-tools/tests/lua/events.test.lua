@@ -9,7 +9,7 @@ dofile("modkit-tools/tests/lua/harness.lua");
 NOW = 0;
 function Universe_GameTime() return NOW; end
 RULES_ADDED = {};
-function Rule_AddInterval(name, interval) RULES_ADDED[getn(RULES_ADDED) + 1] = { name, interval }; end
+function Rule_AddInterval(name, interval) listPush(RULES_ADDED, { name, interval }); end
 
 loadQuietly("scripts/modkit/events.lua"); -- (also loads table_util, memgroup and protected_call)
 
@@ -31,7 +31,7 @@ function fresh()
 end
 
 function record(value)
-	RECORD[getn(RECORD) + 1] = value;
+	listPush(RECORD, value);
 end
 
 --- Runs `fn` with `print` silenced (for code which prints warnings or errors on purpose).
@@ -270,6 +270,273 @@ describe("chains", function ()
 			:next({ interval = 0.1, fn = function (resolve) record("config"); resolve(); end });
 		run(1);
 		expectEq(RECORD, { "named", "config" });
+	end);
+	it("begin and catch return the event, and next returns a new event (the chain)", function ()
+		fresh();
+		local first = E:make(function (resolve) resolve(); end);
+		local second = E:make(function (resolve) resolve(); end);
+		expect(first:begin() == first, "begin should return the event");
+		expect(first() == first, "calling the event should return it");
+		expect(second:catch(function () end) == second, "catch should return the event");
+		local chain = first:next(second);
+		expect(E:isEvent(chain), "next should return an event");
+		expect(chain ~= first and chain ~= second, "next should return a new event");
+	end);
+	it("next on an event that hasn't begun doesn't begin anything", function ()
+		fresh();
+		local head = E:make(function (resolve) record("head"); resolve(); end);
+		local chain = head:next(function (resolve) record("tail"); resolve(); end);
+		run(1);
+		expectEq(RECORD, {});
+		expectEq(head.status, EVENT_STATUS.INIT);
+		expectEq(chain.status, EVENT_STATUS.INIT);
+	end);
+	it("beginning a chain runs its events in turn, passing results along, and resolves with the last", function ()
+		fresh();
+		local chain = E:make(function (resolve, _, state) record(state._previous_result); resolve("a"); end)
+			:next(function (resolve, _, state) record(state._previous_result); resolve("b"); end)
+			:next(function (resolve, _, state) record(state._previous_result); resolve("c"); end);
+		expectEq(listLength(chain._steps), 3, "a chain of a chain that hasn't begun should be one chain");
+		run(1);
+		expectEq(RECORD, {});
+
+		expect(chain:begin("start") == chain, "begin should return the chain");
+		run(1);
+		expectEq(RECORD, { "start", "a", "b" });
+		expectEq(chain.status, EVENT_STATUS.RESOLVED);
+		expectEq(chain.result, "c");
+	end);
+	it("calling a chain begins it too", function ()
+		fresh();
+		local chain = E:make(function (resolve) record("head"); resolve(); end)
+			:next(function (resolve) record("tail"); resolve(); end);
+		chain();
+		run(1);
+		expectEq(RECORD, { "head", "tail" });
+	end);
+	it("next doesn't change either event: each can still be begun on its own", function ()
+		fresh();
+		local a = E:make(function (resolve) record("a"); resolve(); end);
+		local b = E:make(function (resolve) record("b"); resolve(); end);
+		a:next(b);
+		a:begin();
+		run(1);
+		expectEq(RECORD, { "a" });
+		b:begin();
+		run(1);
+		expectEq(RECORD, { "a", "b" });
+	end);
+	it("a chain can be begun again, running its events again", function ()
+		fresh();
+		local chain = E:make(function (resolve) record("a"); resolve(); end)
+			:next(function (resolve) record("b"); resolve(); end);
+		chain:begin();
+		run(1);
+		chain:begin();
+		run(1);
+		expectEq(RECORD, { "a", "b", "a", "b" });
+	end);
+	it("chaining a chain leaves the first chain as it was", function ()
+		fresh();
+		local ab = E:make(function (resolve) record("a"); resolve(); end)
+			:next(function (resolve) record("b"); resolve(); end);
+		local abc = ab:next(function (resolve) record("c"); resolve(); end);
+		ab:begin();
+		run(1);
+		expectEq(RECORD, { "a", "b" });
+		abc:begin();
+		run(1);
+		expectEq(RECORD, { "a", "b", "a", "b", "c" });
+	end);
+	it("a chain made from a running event begins straight away, waiting for that run rather than restarting it", function ()
+		fresh();
+		local head = E:make({ interval = 0.1, fn = function (resolve, _, state)
+			if (state._tick == 0) then record("head began"); end
+			if (state._tick >= 5) then resolve("head done"); end
+		end });
+		local chain = head:begin():next(function (resolve, _, state) record(state._previous_result); record(NOW); resolve(); end);
+		expectEq(chain.status, EVENT_STATUS.RUNNING);
+		run(2);
+		expectEq(RECORD[1], "head began");
+		expectEq(RECORD[2], "head done");
+		expect(RECORD[3] > 0.5, "the tail ran at " .. tostring(RECORD[3]) .. ", before the head finished");
+		expectEq(listLength(RECORD), 3, "the head should only have run once");
+	end);
+	it("a rejection's message reaches catch unchanged, however deep the chain", function ()
+		fresh();
+		local chain = E:make({ name = "deep-head", fn = function (_, reject) reject("broke"); end }):begin()
+			:next(function (resolve) record("skipped"); resolve(); end)
+			:next(function (resolve) record("skipped too"); resolve(); end)
+			:next(function (resolve) record("skipped three"); resolve(); end)
+			:catch(function (message) record(message); end);
+		run(1);
+		expectEq(RECORD, { "[deep-head]: broke" });
+		expectEq(chain.error, "[deep-head]: broke");
+	end);
+	it("catch on a chain that hasn't begun gets a rejection from its first event, once begun", function ()
+		fresh();
+		local chain = E:make({ name = "deferred-head", fn = function (_, reject) reject("broke"); end })
+			:next(function (resolve) record("skipped"); resolve(); end)
+			:catch(function (message) record(message); end);
+		run(1);
+		expectEq(RECORD, {});
+		chain:begin();
+		run(1);
+		expectEq(RECORD, { "[deferred-head]: broke" });
+		expectEq(chain.status, EVENT_STATUS.REJECTED);
+	end);
+	it("stopping a chain pauses the event it began, and rejecting one rejects it", function ()
+		fresh();
+		local slow = E:make({ interval = 0.1, fn = function () end });
+		local chain = slow:next(function (resolve) resolve(); end);
+		chain:begin();
+		run(0.5);
+		expectEq(slow.status, EVENT_STATUS.RUNNING);
+		chain:stop();
+		expectEq(slow.status, EVENT_STATUS.INIT);
+
+		chain:begin();
+		run(0.5);
+		expectEq(slow.status, EVENT_STATUS.RUNNING);
+		chain:finish(EVENT_STATUS.REJECTED, "stopped");
+		expectEq(slow.status, EVENT_STATUS.REJECTED);
+	end);
+	it("stopping a chain leaves alone an event it didn't begin", function ()
+		fresh();
+		local running = E:make({ interval = 0.1, fn = function () end }):begin();
+		local chain = running:next(function (resolve) resolve(); end);
+		run(0.5);
+		chain:finish(EVENT_STATUS.REJECTED, "stopped");
+		expectEq(running.status, EVENT_STATUS.RUNNING);
+	end);
+	it("an event stopped by hand while its chain waits on it rejects the chain", function ()
+		fresh();
+		local slow = E:make({ name = "slow", interval = 0.1, fn = function () end });
+		local chain = slow:next(function (resolve) record("ran on"); resolve(); end);
+		chain:begin();
+		run(0.5);
+		slow:stop();
+		run(0.5);
+		expectEq(chain.status, EVENT_STATUS.REJECTED);
+		expectTruthy(strfind(chain.error, "('slow') was stopped", 1, 1), "error: " .. tostring(chain.error));
+		expectEq(RECORD, {});
+	end);
+	it("next with clone runs copies, leaving the events themselves untouched", function ()
+		fresh();
+		local a = E:make({ state = { runs = 0 }, fn = function (resolve, _, state)
+			state.runs = state.runs + 1;
+			record("a " .. state.runs);
+			resolve();
+		end });
+		local b = E:make(function (resolve) record("b"); resolve(); end);
+		local chain = a:next(b, { clone = 1 });
+		expect(chain._steps[1].event ~= a and chain._steps[2].event ~= b, "the chain should hold copies");
+		chain:begin();
+		run(1);
+		expectEq(RECORD, { "a 1", "b" });
+		expectEq(a.status, EVENT_STATUS.INIT);
+		expectEq(b.status, EVENT_STATUS.INIT);
+		expectEq(a.state.runs, 0, "the copy should have its own state");
+	end);
+	it("next with clone still waits for a running event, rather than copying it", function ()
+		fresh();
+		local head = E:make(function (resolve, _, state) if (state._tick == 0) then record("head"); end resolve(); end):begin();
+		local chain = head:next(function (resolve) record("tail"); resolve(); end, { clone = 1 });
+		expect(chain._steps[1].event == head, "the running event should be waited for, not copied");
+		run(1);
+		expectEq(RECORD, { "head", "tail" });
+	end);
+	it("clone copies an event's callback, interval, iterations and initial state, under a new name", function ()
+		fresh();
+		local original = E:make({ name = "original", interval = 2, iterations = 3, state = { n = 1 }, fn = function () end });
+		original.state.n = 5; -- (changed after it was made, like a callback would)
+		local copy = E:clone(original);
+		expect(copy ~= original, "should be a new event");
+		expect(copy.fn == original.fn, "same callback");
+		expectEq({ copy.interval, copy.iterations, copy.state.n }, { 2, 3, 1 });
+		expect(copy.name ~= "original", "should have a new name");
+	end);
+	it("chain (deprecated) returns the event itself", function ()
+		fresh();
+		local event = E:make(function () end);
+		---@diagnostic disable-next-line: deprecated
+		expect(E:chain(event) == event, "chain should return the event");
+	end);
+end);
+
+describe("parallel", function ()
+	--- An event resolving with `value` after `seconds`, recording `label` when it does.
+	function after(seconds, value, label)
+		return E:make({ interval = 0.1, fn = function (resolve, _, state)
+			if (NOW - state._started_gametime >= %seconds - 0.001) then
+				record(%label);
+				resolve(%value);
+			end
+		end });
+	end
+
+	it("runs its branches at once, and resolves with their results in order once they've all resolved", function ()
+		fresh();
+		local group = E:parallel({ after(1, "a", "a"), after(0.5, "b", "b"), function (resolve) resolve("c"); end });
+		group:begin():next(function (resolve, _, state) record(state._previous_result); resolve(); end);
+		run(2);
+		expectEq(RECORD[1], "b", "the shorter branch should finish first");
+		expectEq(RECORD[2], "a");
+		expectEq(RECORD[3], { "a", "b", "c"; n = 3 });
+		expectEq(group.status, EVENT_STATUS.RESOLVED);
+	end);
+	it("gives each branch its previous result", function ()
+		fresh();
+		E:make(function (resolve) resolve(5); end):begin()
+			:next(E:parallel({
+				function (resolve, _, state) resolve(state._previous_result + 1); end,
+				function (resolve, _, state) resolve(state._previous_result * 2); end,
+			}))
+			:next(function (resolve, _, state) record(state._previous_result); resolve(); end);
+		run(1);
+		expectEq(RECORD, { { 6, 10; n = 2 } });
+	end);
+	it("waits on a branch that's already running, rather than restarting it", function ()
+		fresh();
+		local running = after(1, "r", "running");
+		running:begin();
+		run(0.5);
+		E:parallel({ running }):begin();
+		run(1);
+		expectEq(RECORD, { "running" });
+	end);
+	it("rejects straight away when a branch rejects, with its error, and rejects the branches it began", function ()
+		fresh();
+		local slow = after(5, "slow", "slow");
+		local group = E:parallel({ E:make({ name = "breaks", fn = function (_, reject) reject("broke"); end }), slow });
+		group:begin():catch(function (message) record(message); end);
+		run(1);
+		expectEq(RECORD, { "[breaks]: broke" });
+		expectEq(slow.status, EVENT_STATUS.REJECTED, "the other branch should have been rejected");
+		run(5);
+		expectEq(listLength(RECORD), 1, "the other branch shouldn't have finished");
+	end);
+	it("with settle, lets every branch finish, then rejects with each error, numbered", function ()
+		fresh();
+		local group = E:parallel({
+			E:make({ name = "first", fn = function (_, reject) reject("one"); end }),
+			after(1, "ok", "ok"),
+			E:make({ name = "third", interval = 0.1, fn = function (_, reject, state) if (state._tick >= 3) then reject("three"); end end }),
+		}, { settle = 1 });
+		group:begin():catch(function (message) record(message); end);
+		run(2);
+		expectEq(RECORD, { "ok", "(1) [first]: one; (3) [third]: three" });
+	end);
+	it("stopping it stops the branches it began", function ()
+		fresh();
+		local slow = after(5, "slow", "slow");
+		local group = E:parallel({ slow });
+		group:begin();
+		run(0.5);
+		group:stop();
+		expectEq(slow.status, EVENT_STATUS.INIT);
+		run(6);
+		expectEq(RECORD, {});
 	end);
 end);
 
