@@ -1,0 +1,12 @@
+-- modkit test turret: the stock `kus_assaultgun` turret (its model, shared), armed with `test_turret`, for
+-- `test engine/lead/turret`. Its name needs a race prefix (`TEST_`, modkit's test race: `scripts/races/test.lua`): a turret subsystem whose name has none is created
+-- without its weapon (it never fires, and the UI shows 0 attack damage; found 2026-11-08). Not for gameplay.
+
+NewSubSystemType = StartSubSystemConfig()
+NewSubSystemType.selectionLimit=1
+NewSubSystemType.type="Weapon"
+NewSubSystemType.hasIcon=0
+LoadSharedModel(NewSubSystemType,"Kus_AssaultGun"); 
+NewSubSystemType.AttackFamily="Frigate"
+NewSubSystemType.ArmourFamily="MediumArmour"
+StartSubSystemWeaponConfig(NewSubSystemType,"test_turret","Weapon_Gun0","Weapon_Gun0");

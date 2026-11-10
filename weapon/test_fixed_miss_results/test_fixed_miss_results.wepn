@@ -1,0 +1,10 @@
+-- modkit test weapon (ballistic, (almost) always misses, with a `"Miss"` result of 300 damage as well as the 100 `"Hit"`), for `test engine/weapons` (scripts/modkit/tests/engine/weapons/basics.lua). Not for gameplay.
+StartWeaponConfig(NewWeaponType, "Fixed", "Bullet", "Dread_Bomb", "Normal", 600, 5000, 0, 0, 0, 0, 1, 1, 0, 1.0, 0, 0, 0, 0, 0, 0, 0.1, "Normal", 0, 0, 0);
+AddWeaponResult(NewWeaponType, "Hit", "DamageHealth", "Target", 100, 100, "");
+AddWeaponResult(NewWeaponType, "Miss", "DamageHealth", "Target", 300, 300, "");
+setPenetration(NewWeaponType, 5, 1);
+setAccuracy(NewWeaponType, 0.001);
+setAngles(NewWeaponType, 179, 0, 0, 0, 0);
+setMissProperties(NewWeaponType, 0, 0, 0.5, 0.5, 1, 1);
+setBallistics(NewWeaponType, 0, 0.0);
+setFireMultFactor(NewWeaponType, 1.0);

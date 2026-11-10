@@ -1,0 +1,13 @@
+-- modkit test weapon (lead 0.9, as in the stock lead weapons), for `test engine/lead/gimbal` (scripts/modkit/tests/engine/lead/gimbal.lua).
+-- Mount: Gimble. It aims itself within a 60 degree cone around its hardpoint (wider than the stock 25, so targets crossing
+-- up to ~40 degrees off-axis stay in it).
+-- Otherwise as `test_fixed_lead`: a 600/s bullet every 1s for a fixed 100 damage, out to 5000, accuracy 1 (every shot is
+-- marked as a 'hit'). Not for gameplay.
+StartWeaponConfig(NewWeaponType, "Gimble", "Bullet", "Dread_Bomb", "Normal", 600, 5000, 0, 0, 0, 0, 1, 1, 0, 1.0, 0, 0, 0, 0, 0, 0, 0.1, "Normal", 0, 0, 0);
+AddWeaponResult(NewWeaponType, "Hit", "DamageHealth", "Target", 100, 100, "");
+setPenetration(NewWeaponType, 5, 1);
+setAccuracy(NewWeaponType, 1);
+setAngles(NewWeaponType, 60, 0, 0, 0, 0);
+setMissProperties(NewWeaponType, 0, 0, 0.5, 0.5, 1, 1);
+setBallistics(NewWeaponType, 0, 0.9);
+setFireMultFactor(NewWeaponType, 1.0);

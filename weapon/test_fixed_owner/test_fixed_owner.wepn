@@ -1,0 +1,10 @@
+-- modkit test weapon, for `test engine/weapons/results` (scripts/modkit/tests/engine/weapons/results.lua): the baseline (`test_fixed`)
+-- with its damage result's affectee set to "Owner" instead of "Target".
+StartWeaponConfig(NewWeaponType, "Fixed", "Bullet", "Dread_Bomb", "Normal", 600, 5000, 0, 0, 0, 0, 1, 1, 0, 1.0, 0, 0, 0, 0, 0, 0, 0.1, "Normal", 0, 0, 0);
+AddWeaponResult(NewWeaponType, "Hit", "DamageHealth", "Owner", 100, 100, "");
+setPenetration(NewWeaponType, 5, 1);
+setAccuracy(NewWeaponType, 1);
+setAngles(NewWeaponType, 179, 0, 0, 0, 0);
+setMissProperties(NewWeaponType, 0, 0, 0.5, 0.5, 1, 1);
+setBallistics(NewWeaponType, 0, 0.0);
+setFireMultFactor(NewWeaponType, 1.0);

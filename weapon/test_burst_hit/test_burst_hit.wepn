@@ -1,0 +1,8 @@
+-- modkit test weapon (a 300-radius SphereBurst, every burst a 'hit'; spawned where a `test_fixed_burst_hit` gun's shot strikes), for `test engine/weapons` (scripts/modkit/tests/engine/weapons/fire_types.lua). Not for gameplay.
+StartWeaponConfig(NewWeaponType, "Fixed", "SphereBurst", "ArtilleryBurst", "Normal", 0, 0, 300, 2, 0, 0, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.1, "Normal", 1, 0, 0);
+AddWeaponResult(NewWeaponType, "Hit", "DamageHealth", "Target", 100, 100, "");
+setPenetration(NewWeaponType, 5, 1);
+setAccuracy(NewWeaponType, 1);
+setMissProperties(NewWeaponType, 0, 0, 0.5, 0.5, 1, 1);
+setBallistics(NewWeaponType, 1, 0.0);
+setFireMultFactor(NewWeaponType, 1.0);

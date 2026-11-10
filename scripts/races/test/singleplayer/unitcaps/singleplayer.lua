@@ -1,0 +1,1 @@
+-- modkit's test race (see `scripts/races/test.lua`): no unit caps of its own.

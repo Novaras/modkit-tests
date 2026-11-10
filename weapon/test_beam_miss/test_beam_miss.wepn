@@ -1,0 +1,10 @@
+-- (beam lifetime 0.5s: with 0 (the first version) a beam never struck anything)
+-- modkit test weapon (the InstantHit beam, ballistic, (almost) every shot a 'miss'), for `test engine/weapons` (scripts/modkit/tests/engine/weapons/fire_types.lua). Not for gameplay.
+StartWeaponConfig(NewWeaponType, "Fixed", "InstantHit", "IonBeam", "Normal", 0, 5000, 0, 0.5, 0, 0, 1, 1, 0, 1.0, 0, 0, 0, 0, 0, 0, 0.1, "Normal", 0, 0, 0);
+AddWeaponResult(NewWeaponType, "Hit", "DamageHealth", "Target", 100, 100, "");
+setPenetration(NewWeaponType, 5, 1);
+setAccuracy(NewWeaponType, 0.001);
+setAngles(NewWeaponType, 179, 0, 0, 0, 0);
+setMissProperties(NewWeaponType, 0, 0, 0.5, 0.5, 1, 1);
+setBallistics(NewWeaponType, 0, 0.0);
+setFireMultFactor(NewWeaponType, 1.0);

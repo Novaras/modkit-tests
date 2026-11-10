@@ -1,0 +1,13 @@
+-- modkit test weapon (lead 1), for `test engine/lead/turret` (scripts/modkit/tests/engine/lead/turret.lua).
+-- Mount: AnimatedTurret, on the `subsystem/test_turret_lead_subs` turret (the stock `kus_assaultgun` model), with that weapon's turret
+-- settings and angles.
+-- Otherwise as `test_fixed_lead`: a 600/s bullet every 1s for a fixed 100 damage, out to 5000, accuracy 1 (every shot is
+-- marked as a 'hit'). Not for gameplay.
+StartWeaponConfig(NewWeaponType, "AnimatedTurret", "Bullet", "Dread_Bomb", "Normal", 600, 5000, 0, 0, 0, 0, 1, 1, 1, 1.0, 0, 0, 1, 1, 15, 15, 0.1, "Normal", 1, 0, 0);
+AddWeaponResult(NewWeaponType, "Hit", "DamageHealth", "Target", 100, 100, "");
+setPenetration(NewWeaponType, 5, 1);
+setAccuracy(NewWeaponType, 1);
+setAngles(NewWeaponType, 10, -150, 150, -10, 60);
+setMissProperties(NewWeaponType, 0, 0, 0.5, 0.5, 1, 1);
+setBallistics(NewWeaponType, 0, 1.0);
+setFireMultFactor(NewWeaponType, 1.0);

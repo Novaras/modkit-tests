@@ -1,0 +1,9 @@
+-- modkit test weapon (the baseline gun with (almost) every shot a 'miss', whose shots deal no damage: each strike spawns a `test_burst_hit` burst), for `test engine/weapons` (scripts/modkit/tests/engine/weapons/fire_types.lua). Not for gameplay.
+StartWeaponConfig(NewWeaponType, "Fixed", "Bullet", "Dread_Bomb", "Normal", 600, 5000, 0, 0, 0, 0, 1, 1, 0, 1.0, 0, 0, 0, 0, 0, 0, 0.1, "Normal", 0, 0, 0);
+AddWeaponResult(NewWeaponType, "Hit", "SpawnWeaponFire", "Target", 0, 0, "test_burst_hit");
+setPenetration(NewWeaponType, 5, 1);
+setAccuracy(NewWeaponType, 0.001);
+setAngles(NewWeaponType, 179, 0, 0, 0, 0);
+setMissProperties(NewWeaponType, 0, 0, 0.5, 0.5, 1, 1);
+setBallistics(NewWeaponType, 0, 0.0);
+setFireMultFactor(NewWeaponType, 1.0);
